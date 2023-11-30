@@ -10,3 +10,4 @@ PostgresDB:
 Grpc:
   network: 'tcp'
   address: ':9092'
+

@@ -1,7 +1,11 @@
 package main
 
-import "Ozon/internal/app"
+import (
+	"Ozon/internal/app"
+	"context"
+)
 
 func main() {
-	app.Run()
+	a := app.New(context.Background())
+	app.Run(a)
 }

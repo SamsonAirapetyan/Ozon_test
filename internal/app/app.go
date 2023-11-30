@@ -9,6 +9,7 @@ import (
 	"Ozon/pkg/postgres"
 	protos "Ozon/protos/links"
 	"context"
+	"github.com/joho/godotenv"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 	"net"
@@ -20,8 +21,8 @@ import (
 )
 
 type Repository interface {
-	Get(ctx context.Context, shortUrl string) (string, error)
-	Create(ctx context.Context, shortURL, url string) error
+	GetFullLink(ctx context.Context, shortUrl string) (string, error)
+	CreateShortLink(ctx context.Context, fullLink, shortLink string) error
 }
 type App struct {
 	handlers   *handlers.Handler
@@ -29,27 +30,44 @@ type App struct {
 	repository Repository
 }
 
-func Run() {
+func Run(a *App) {
 	logger := logger.GetLogger()
 	logger.Info("[INFO] Server is starting...")
 	cfg := config2.ParseConfig(config2.ConfigViper())
 	ctx := context.Background()
 	gs := grpc.NewServer()
 
-	connPool := postgres.OpenPoolConnection(ctx, cfg)
-	if err := connPool.Ping(ctx); err != nil {
-		logger.Info("Unable to ping the database connection", "error", err)
-		os.Exit(1)
+	//load .env file
+	err := godotenv.Load(".env")
+	if err != nil {
+		logger.Error("Can not load .env file")
 	}
-	//postgres.RunMigrationsUp(ctx, cfg)
 
-	storage := repository.NewStorage(connPool)
+	stor := os.Getenv("STORAGE_TYPE")
 
-	repos := repository.NewPostgresRepository(storage)
-	serv := service.NewService(repos)
-	hand := handlers.NewHandler(serv)
+	app := &App{}
+	switch stor {
+	case "psql":
+		connPool := postgres.OpenPoolConnection(ctx, cfg)
+		if err := connPool.Ping(ctx); err != nil {
+			logger.Info("Unable to ping the database connection", "error", err)
+			os.Exit(1)
+		}
+		//postgres.RunMigrationsUp(ctx, cfg)
 
-	protos.RegisterLinkServer(gs, hand)
+		storage := repository.NewStorage(connPool)
+		app.repository = repository.NewPostgresRepository(storage)
+		logger.Info("Postgres storage")
+	case "inMemo":
+		app.repository = repository.NewMemoryRepository()
+		logger.Info("In-memory storage")
+	default:
+		logger.Error("No database has chosen")
+	}
+	app.service = service.NewService(a.repository)
+	app.handlers = handlers.NewHandler(a.service)
+
+	protos.RegisterLinkServer(gs, a.handlers)
 	reflection.Register(gs)
 
 	l, err := net.Listen("tcp", cfg.Grpc.Address)
@@ -58,7 +76,6 @@ func Run() {
 		os.Exit(1)
 	}
 
-	//Like listen and Serve in HTTP
 	gs.Serve(l)
 }
 
