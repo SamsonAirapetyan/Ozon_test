@@ -58,14 +58,15 @@ func (c *linkClient) GetFullLink(ctx context.Context, in *LinkRequest, opts ...g
 }
 
 // LinkServer is the server API for Link service.
-// All implementations should embed UnimplementedLinkServer
+// All implementations must embed UnimplementedLinkServer
 // for forward compatibility
 type LinkServer interface {
 	CreateShortLink(context.Context, *LinkRequest) (*LinkResponse, error)
 	GetFullLink(context.Context, *LinkRequest) (*LinkResponse, error)
+	mustEmbedUnimplementedLinkServer()
 }
 
-// UnimplementedLinkServer should be embedded to have forward compatible implementations.
+// UnimplementedLinkServer must be embedded to have forward compatible implementations.
 type UnimplementedLinkServer struct {
 }
 
@@ -75,6 +76,7 @@ func (UnimplementedLinkServer) CreateShortLink(context.Context, *LinkRequest) (*
 func (UnimplementedLinkServer) GetFullLink(context.Context, *LinkRequest) (*LinkResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetFullLink not implemented")
 }
+func (UnimplementedLinkServer) mustEmbedUnimplementedLinkServer() {}
 
 // UnsafeLinkServer may be embedded to opt out of forward compatibility for this service.
 // Use of this interface is not recommended, as added methods to LinkServer will

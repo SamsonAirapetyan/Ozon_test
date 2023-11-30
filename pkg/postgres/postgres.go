@@ -68,3 +68,28 @@ func RunMigrationsUp(ctx context.Context, cfg *config.Config) {
 	}
 	logger.Info("Migrations are up successfully.")
 }
+
+func DownMigrationsUp(ctx context.Context, cfg *config.Config) {
+	logger := logger2.GetLogger()
+
+	db_conn := fmt.Sprintf("postgresql://%s:%s@%s:%s/%s?sslmode=%s",
+		cfg.PostgresDB.User,
+		cfg.PostgresDB.Password,
+		cfg.PostgresDB.Host,
+		cfg.PostgresDB.Port,
+		cfg.PostgresDB.DBName,
+		cfg.PostgresDB.SSLmode,
+	)
+
+	migration, err := migrate.New("file://migrations", db_conn)
+	if err != nil {
+		logger.Error("Unable to get a migrate instance", "error", err.Error())
+		os.Exit(1)
+	}
+	err = migration.Down()
+	if err != nil {
+		logger.Error("Unable to migrate down", "error", err.Error())
+		os.Exit(1)
+	}
+	logger.Info("Migrations are down successfully.")
+}

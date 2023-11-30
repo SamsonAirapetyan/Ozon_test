@@ -1,2 +1,5 @@
 .idea
 .env
+wait-for-postgres.sh
+profile001.png
+cpuProfile.out

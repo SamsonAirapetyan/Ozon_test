@@ -28,7 +28,7 @@ func NewService(data Repository) *Service {
 }
 
 func (s *Service) CreateShortLink(ctx context.Context, fullLink string) (string, error) {
-	shortLink := MakeShortLink(fullLink)
+	shortLink := s.MakeShortLink(fullLink)
 	err := s.data.CreateShortLink(ctx, fullLink, shortLink)
 	if err != nil {
 		return "", err
@@ -36,7 +36,7 @@ func (s *Service) CreateShortLink(ctx context.Context, fullLink string) (string,
 	return shortLink, nil
 }
 
-func MakeShortLink(fullLink string) string {
+func (s *Service) MakeShortLink(fullLink string) string {
 	shortLink := make([]byte, lengthLink, lengthLink)
 	v := big.Int{}
 	h := sha256.New()

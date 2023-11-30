@@ -5,19 +5,17 @@ import (
 	"Ozon/internal/handlers"
 	"Ozon/internal/repository"
 	"Ozon/internal/service"
-	logger "Ozon/pkg/logger"
+	"Ozon/pkg/logger"
 	"Ozon/pkg/postgres"
 	protos "Ozon/protos/links"
 	"context"
+	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/joho/godotenv"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/reflection"
+	"google.golang.org/grpc/credentials/insecure"
 	"net"
 	"net/http"
 	"os"
-	"os/signal"
-	"syscall"
-	"time"
 )
 
 type Repository interface {
@@ -30,12 +28,39 @@ type App struct {
 	repository Repository
 }
 
-func Run(a *App) {
+func New(ctx context.Context, cfg *config2.Config) *App {
+	logger := logger.GetLogger()
+	stor := os.Getenv("STORAGE_TYPE")
+	app := &App{}
+	switch stor {
+	case "psql":
+		connPool := postgres.OpenPoolConnection(ctx, cfg)
+		if err := connPool.Ping(ctx); err != nil {
+			logger.Info("Unable to ping the database connection", "error", err)
+			os.Exit(1)
+		}
+
+		postgres.RunMigrationsUp(ctx, cfg)
+		defer postgres.DownMigrationsUp(ctx, cfg)
+
+		storage := repository.NewStorage(connPool)
+		app.repository = repository.NewPostgresRepository(storage)
+		logger.Info("Postgres storage")
+	case "inMemory":
+		app.repository = repository.NewMemoryRepository()
+		logger.Info("In-memory storage")
+	default:
+		logger.Error("No database has chosen")
+	}
+	app.service = service.NewService(app.repository)
+	return app
+}
+
+func Run() {
 	logger := logger.GetLogger()
 	logger.Info("[INFO] Server is starting...")
-	cfg := config2.ParseConfig(config2.ConfigViper())
 	ctx := context.Background()
-	gs := grpc.NewServer()
+	cfg := config2.ParseConfig(config2.ConfigViper())
 
 	//load .env file
 	err := godotenv.Load(".env")
@@ -53,51 +78,72 @@ func Run(a *App) {
 			logger.Info("Unable to ping the database connection", "error", err)
 			os.Exit(1)
 		}
-		//postgres.RunMigrationsUp(ctx, cfg)
+
+		postgres.RunMigrationsUp(ctx, cfg)
+		defer postgres.DownMigrationsUp(ctx, cfg)
 
 		storage := repository.NewStorage(connPool)
 		app.repository = repository.NewPostgresRepository(storage)
 		logger.Info("Postgres storage")
-	case "inMemo":
+	case "inMemory":
 		app.repository = repository.NewMemoryRepository()
 		logger.Info("In-memory storage")
 	default:
 		logger.Error("No database has chosen")
 	}
-	app.service = service.NewService(a.repository)
-	app.handlers = handlers.NewHandler(a.service)
+	app.service = service.NewService(app.repository)
+	app.handlers = handlers.NewHandler(app.service)
 
-	protos.RegisterLinkServer(gs, a.handlers)
-	reflection.Register(gs)
-
-	l, err := net.Listen("tcp", cfg.Grpc.Address)
+	lis, err := net.Listen("tcp", ":9092")
 	if err != nil {
-		logger.Error("[ERROR] Unable to listen", "errors", err)
-		os.Exit(1)
+		logger.Info("Failed to listen")
 	}
 
-	gs.Serve(l)
-}
-
-func StartServer(ctx context.Context, srv http.Server) {
-	logger := logger.GetLogger()
-
+	s := grpc.NewServer()
+	protos.RegisterLinkServer(s, app.handlers)
 	go func() {
-		logger.Info("Starting server...")
-		err := srv.ListenAndServe()
-		if err != nil {
-			logger.Error("Server was stopped", "error", err)
-			os.Exit(1)
+		if err = s.Serve(lis); err != nil {
+			logger.Error("failed to serve: " + err.Error())
 		}
 	}()
 
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	conn, err := grpc.DialContext(
+		context.Background(),
+		":9092",
+		grpc.WithBlock(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	if err != nil {
+		logger.Error("Failed to dial server: " + err.Error())
+	}
+	defer conn.Close()
 
-	signal := <-sigChan
-	logger.Info("signal has been recieved", "signal", signal)
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
+	runRest(ctx, conn)
+}
 
-	srv.Shutdown(ctx)
+func runRest(ctx context.Context, conn *grpc.ClientConn) {
+	logger := logger.GetLogger()
+	gwmux := runtime.NewServeMux()
+	err := protos.RegisterLinkHandler(context.Background(), gwmux, conn)
+	if err != nil {
+		logger.Error("Failed to register gateway:" + err.Error())
+	}
+
+	gwServer := &http.Server{
+		Addr:    ":8080",
+		Handler: gwmux,
+	}
+
+	logger.Info("Serving gRPC-Gateway on port " + ":8080")
+	if err = gwServer.ListenAndServe(); err != nil {
+		if err == http.ErrServerClosed {
+			logger.Error("Server closed: " + err.Error())
+			os.Exit(0)
+		}
+		logger.Error("Failed to listen and serve: " + err.Error())
+	}
+
+	if err := gwServer.ListenAndServe(); err != nil {
+		panic(err)
+	}
 }

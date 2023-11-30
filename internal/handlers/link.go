@@ -2,7 +2,6 @@ package handlers
 
 import (
 	errors "Ozon/domain"
-	"Ozon/internal/service"
 	"Ozon/pkg/logger"
 	protos "Ozon/protos/links"
 	"context"
@@ -11,12 +10,18 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-type Handler struct {
-	logger  hclog.Logger
-	service *service.Service
+type Service interface {
+	MakeShortLink(fullLink string) string
+	CreateShortLink(ctx context.Context, fullLink string) (string, error)
+	GetFullLink(ctx context.Context, shortLink string) (string, error)
 }
 
-func NewHandler(service *service.Service) *Handler {
+type Handler struct {
+	logger  hclog.Logger
+	service Service
+}
+
+func NewHandler(service Service) *Handler {
 	return &Handler{logger: logger.GetLogger(), service: service}
 }
 
