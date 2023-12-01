@@ -17,16 +17,16 @@ type Service interface {
 }
 
 type Handler struct {
-	logger  hclog.Logger
+	log     hclog.Logger
 	service Service
 }
 
 func NewHandler(service Service) *Handler {
-	return &Handler{logger: logger.GetLogger(), service: service}
+	return &Handler{log: logger.GetLogger(), service: service}
 }
 
 func (h *Handler) CreateShortLink(ctx context.Context, lr *protos.LinkRequest) (*protos.LinkResponse, error) {
-	h.logger.Info("[GET SHORT LINK] Handle GetShortLink", "link", lr.GetLink())
+	h.log.Info("[GET SHORT LINK] Handle GetShortLink", "link", lr.GetLink())
 	if lr.Link == "" {
 		err := status.Newf(
 			codes.InvalidArgument,
@@ -51,14 +51,14 @@ func (h *Handler) CreateShortLink(ctx context.Context, lr *protos.LinkRequest) (
 			}
 			return nil, er.Err()
 		}
-		h.logger.Error("[ERROR] Trouble with adding data into DataBase", err.Error())
+		h.log.Error("[ERROR] Trouble with adding data into DataBase", err.Error())
 		return nil, err
 	}
 	return &protos.LinkResponse{Link: sh}, nil
 }
 
 func (h *Handler) GetFullLink(ctx context.Context, lr *protos.LinkRequest) (*protos.LinkResponse, error) {
-	h.logger.Info("[GET FULL LINK] Handle GetFullLink", "link", lr.GetLink())
+	h.log.Info("[GET FULL LINK] Handle GetFullLink", "link", lr.GetLink())
 
 	if len(lr.Link) != 10 {
 		err := status.Newf(
@@ -83,7 +83,7 @@ func (h *Handler) GetFullLink(ctx context.Context, lr *protos.LinkRequest) (*pro
 			if wde != nil {
 				return nil, wde
 			}
-			h.logger.Error("[ERROR] For short link we do not have a full link")
+			h.log.Error("[ERROR] For short link we do not have a full link")
 			return nil, er.Err()
 		} else if err == errors.ErrInvalidArgument {
 			er := status.Newf(
@@ -94,10 +94,10 @@ func (h *Handler) GetFullLink(ctx context.Context, lr *protos.LinkRequest) (*pro
 			if wde != nil {
 				return nil, wde
 			}
-			h.logger.Error("[ERROR] Invalid short link")
+			h.log.Error("[ERROR] Invalid short link")
 			return nil, er.Err()
 		}
-		h.logger.Error("[ERROR] Trouble with taking data from DataBase", err.Error())
+		h.log.Error("[ERROR] Trouble with taking data from DataBase", err.Error())
 		return nil, err
 	}
 	return &protos.LinkResponse{Link: full}, nil

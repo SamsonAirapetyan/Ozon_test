@@ -8,7 +8,7 @@ psql:
 	#go run cmd/app/main.go
 in-memory:
 	echo STORAGE_TYPE=inMemory>.env
-	docker compose --profile db up --build
+	docker compose --profile memory up --build
 	#go run cmd/app/main.go
 tests:
 	go test -cover -v ./internal/service

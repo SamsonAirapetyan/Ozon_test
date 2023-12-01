@@ -9,16 +9,16 @@ import (
 )
 
 type MemoryRepository struct {
-	logger hclog.Logger
-	base   map[string]string
-	mu     *sync.Mutex
+	log  hclog.Logger
+	base map[string]string
+	mu   *sync.Mutex
 }
 
 func NewMemoryRepository() *MemoryRepository {
 	return &MemoryRepository{
-		logger: logger.GetLogger(),
-		base:   make(map[string]string),
-		mu:     &sync.Mutex{},
+		log:  logger.GetLogger(),
+		base: make(map[string]string),
+		mu:   &sync.Mutex{},
 	}
 }
 

@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// ConnectionAttemps try to connect to BD attemps time
+// ConnectionAttemps try to connect to DB attemps time
 func ConnectionAttemps(conn_func func() error, attemps int, delay time.Duration) error {
 	logger := logger2.GetLogger()
 	var err error

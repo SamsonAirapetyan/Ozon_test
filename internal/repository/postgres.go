@@ -10,16 +10,16 @@ import (
 )
 
 type PostgresRepository struct {
-	logger  hclog.Logger
+	log     hclog.Logger
 	storage *Storage //poolConnection
 }
 
 func NewPostgresRepository(storage *Storage) *PostgresRepository {
-	return &PostgresRepository{logger: logger.GetLogger(), storage: storage}
+	return &PostgresRepository{log: logger.GetLogger(), storage: storage}
 }
 
 func (r *PostgresRepository) GetFullLink(ctx context.Context, shortLink string) (string, error) {
-	r.logger.Info("[INFO] Get Links from Postgres DataBase")
+	r.log.Info("[INFO] Get Links from Postgres DataBase")
 	query := `SELECT * FROM link WHERE short_link = $1 `
 	entity := &Link{}
 
@@ -36,7 +36,7 @@ func (r *PostgresRepository) GetFullLink(ctx context.Context, shortLink string) 
 
 	if err = tx.QueryRow(ctx, query, shortLink).Scan(&entity.Full_link, &entity.Short_link); err != nil {
 		if err == pgx.ErrNoRows {
-			r.logger.Error("[ERROR NOT FOUND]  detected")
+			r.log.Error("[ERROR NOT FOUND]  detected")
 			return "", errors.ErrNoRecordFound
 		}
 		return "", err
@@ -49,7 +49,7 @@ func (r *PostgresRepository) GetFullLink(ctx context.Context, shortLink string) 
 }
 
 func (r *PostgresRepository) CreateShortLink(ctx context.Context, fullLink, shortLink string) error {
-	r.logger.Info("[INFO] Set Links in Postgres DataBase")
+	r.log.Info("[INFO] Set Links in Postgres DataBase")
 	query := `INSERT INTO link(full_link,short_link) VALUES ($1,$2) ON CONFLICT DO NOTHING`
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()

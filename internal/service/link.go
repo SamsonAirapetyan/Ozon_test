@@ -20,12 +20,12 @@ type Repository interface {
 }
 
 type Service struct {
-	logger hclog.Logger
-	data   Repository
+	log  hclog.Logger
+	data Repository
 }
 
 func NewService(data Repository) *Service {
-	return &Service{logger: logger.GetLogger(), data: data}
+	return &Service{log: logger.GetLogger(), data: data}
 }
 
 func (s *Service) CreateShortLink(ctx context.Context, fullLink string) (string, error) {
