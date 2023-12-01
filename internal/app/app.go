@@ -84,7 +84,6 @@ func Run() {
 		}
 	}()
 
-	log.Error("[ERROR] Failed to dial server: " + err.Error())
 	conn, err := grpc.DialContext(
 		context.Background(),
 		cfg.Grpc.Address,
