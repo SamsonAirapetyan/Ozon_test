@@ -46,7 +46,7 @@ func TestService_CreateShortLink(t *testing.T) {
 			wantErr:      domain.ErrInvalidArgument,
 		},
 		{
-			name:         "Bad request",
+			name:         "invalid format",
 			args:         args{FullLink: "", ShortLink: "Lw1XBy9jH5"},
 			mockBehavior: func(r *mock_service.MockRepository, shortUrl, originalUrl string) {},
 			want:         "",
@@ -102,11 +102,20 @@ func TestService_GetFullLink(t *testing.T) {
 			wantErr:      domain.ErrInvalidArgument,
 		},
 		{
-			name:         "not found",
-			ShortLink:    "Lw1XBy9jH2",
+			name:         "invalid argument",
+			ShortLink:    "hkkq()№!",
 			mockBehavior: func(s *mock_service.MockRepository, shortLink string) {},
 			want:         "",
-			wantErr:      domain.ErrNoRecordFound,
+			wantErr:      domain.ErrInvalidArgument,
+		},
+		{
+			name:      "not found",
+			ShortLink: "Lw1XBy9jHj",
+			mockBehavior: func(s *mock_service.MockRepository, shortLink string) {
+				s.EXPECT().GetFullLink(context.Background(), shortLink).Return("", domain.ErrNoRecordFound)
+			},
+			want:    "",
+			wantErr: domain.ErrNoRecordFound,
 		},
 	}
 

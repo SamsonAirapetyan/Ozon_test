@@ -57,12 +57,9 @@ func (s *Service) MakeShortLink(fullLink string) string {
 }
 
 func (s *Service) GetFullLink(ctx context.Context, shortLink string) (string, error) {
-	if len(shortLink) != 10 {
+	re := regexp.MustCompile("^[a-zA-Z0-9_]{10}")
+	if !re.MatchString(shortLink) {
 		return "", errors.ErrInvalidArgument
 	}
-	fullLink, err := s.data.GetFullLink(ctx, shortLink)
-	if err != nil {
-		return "", err
-	}
-	return fullLink, nil
+	return s.data.GetFullLink(ctx, shortLink)
 }

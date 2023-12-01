@@ -16,6 +16,8 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 )
 
 //go:generate mockgen -source=app.go -destination=../internal/service/mocks/mock.go
@@ -30,10 +32,13 @@ type App struct {
 	repository Repository
 }
 
-func New(ctx context.Context, cfg *config2.Config) *App {
+func New(ctx context.Context, cfg *config2.Config, app *App) {
+	godotenv.Load(".env")
+	//if err != nil {
+	//	logger.Error("Can not load .env file")
+	//}
 	logger := logger.GetLogger()
 	stor := os.Getenv("STORAGE_TYPE")
-	app := &App{}
 	switch stor {
 	case "psql":
 		connPool := postgres.OpenPoolConnection(ctx, cfg)
@@ -41,9 +46,8 @@ func New(ctx context.Context, cfg *config2.Config) *App {
 			logger.Info("Unable to ping the database connection", "error", err)
 			os.Exit(1)
 		}
-
-		postgres.RunMigrationsUp(ctx, cfg)
-		defer postgres.DownMigrationsUp(ctx, cfg)
+		//postgres.RunMigrationsUp(ctx, cfg)
+		//defer postgres.DownMigrationsUp(ctx, cfg)
 
 		storage := repository.NewStorage(connPool)
 		app.repository = repository.NewPostgresRepository(storage)
@@ -55,7 +59,6 @@ func New(ctx context.Context, cfg *config2.Config) *App {
 		logger.Error("No database has chosen")
 	}
 	app.service = service.NewService(app.repository)
-	return app
 }
 
 func Run() {
@@ -65,36 +68,44 @@ func Run() {
 	cfg := config2.ParseConfig(config2.ConfigViper())
 
 	//load .env file
-	err := godotenv.Load(".env")
-	if err != nil {
-		logger.Error("Can not load .env file")
-	}
-
-	stor := os.Getenv("STORAGE_TYPE")
+	//err := godotenv.Load(".env")
+	//if err != nil {
+	//	logger.Error("Can not load .env file")
+	//}
 
 	app := &App{}
-	switch stor {
-	case "psql":
-		connPool := postgres.OpenPoolConnection(ctx, cfg)
-		if err := connPool.Ping(ctx); err != nil {
-			logger.Info("Unable to ping the database connection", "error", err)
-			os.Exit(1)
-		}
 
-		postgres.RunMigrationsUp(ctx, cfg)
-		defer postgres.DownMigrationsUp(ctx, cfg)
+	New(ctx, cfg, app)
 
-		storage := repository.NewStorage(connPool)
-		app.repository = repository.NewPostgresRepository(storage)
-		logger.Info("Postgres storage")
-	case "inMemory":
-		app.repository = repository.NewMemoryRepository()
-		logger.Info("In-memory storage")
-	default:
-		logger.Error("No database has chosen")
-	}
-	app.service = service.NewService(app.repository)
+	postgres.RunMigrationsUp(ctx, cfg)
+	defer postgres.DownMigrationsUp(ctx, cfg)
+	//stor := os.Getenv("STORAGE_TYPE")
+	//
+	//switch stor {
+	//case "psql":
+	//	connPool := postgres.OpenPoolConnection(ctx, cfg)
+	//	if err := connPool.Ping(ctx); err != nil {
+	//		logger.Info("Unable to ping the database connection", "error", err)
+	//		os.Exit(1)
+	//	}
+	//
+	//	postgres.RunMigrationsUp(ctx, cfg)
+	//	defer postgres.DownMigrationsUp(ctx, cfg)
+	//
+	//	storage := repository.NewStorage(connPool)
+	//	app.repository = repository.NewPostgresRepository(storage)
+	//	logger.Info("Postgres storage")
+	//case "inMemory":
+	//	app.repository = repository.NewMemoryRepository()
+	//	logger.Info("In-memory storage")
+	//default:
+	//	logger.Error("No database has chosen")
+	//}
+	//app.service = service.NewService(app.repository)
 	app.handlers = handlers.NewHandler(app.service)
+
+	interrupt := make(chan os.Signal, 1)
+	signal.Notify(interrupt, os.Interrupt, syscall.SIGTERM)
 
 	lis, err := net.Listen("tcp", ":9092")
 	if err != nil {
@@ -120,10 +131,19 @@ func Run() {
 	}
 	defer conn.Close()
 
-	runRest(ctx, conn)
+	runRest(ctx, conn, interrupt)
+
+	select {
+	case <-interrupt:
+		logger.Info("signal has been recieved", "signal", interrupt)
+		s.GracefulStop()
+		return
+	case <-ctx.Done():
+		return
+	}
 }
 
-func runRest(ctx context.Context, conn *grpc.ClientConn) {
+func runRest(ctx context.Context, conn *grpc.ClientConn, shutdown chan os.Signal) {
 	logger := logger.GetLogger()
 	gwmux := runtime.NewServeMux()
 	err := protos.RegisterLinkHandler(context.Background(), gwmux, conn)
@@ -137,15 +157,24 @@ func runRest(ctx context.Context, conn *grpc.ClientConn) {
 	}
 
 	logger.Info("Serving gRPC-Gateway on port " + ":8080")
-	if err = gwServer.ListenAndServe(); err != nil {
-		if err == http.ErrServerClosed {
-			logger.Error("Server closed: " + err.Error())
-			os.Exit(0)
+	go func() {
+		if err = gwServer.ListenAndServe(); err != nil {
+			if err == http.ErrServerClosed {
+				logger.Error("Server closed: " + err.Error())
+			} else {
+				logger.Error("Failed to listen and serve: " + err.Error())
+			}
+			close(shutdown)
 		}
-		logger.Error("Failed to listen and serve: " + err.Error())
-	}
-
-	if err := gwServer.ListenAndServe(); err != nil {
-		panic(err)
+	}()
+	select {
+	case <-shutdown:
+		logger.Info("Reeived interrupt stgnal. Shutting down gRPC-Gateway...")
+		if err := gwServer.Shutdown(context.Background()); err != nil {
+			logger.Error("Error during shutdown:", err)
+		}
+		return
+	case <-ctx.Done():
+		return
 	}
 }
