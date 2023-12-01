@@ -1,13 +1,14 @@
 package service
 
 import (
+	errors "Ozon/domain"
 	"Ozon/pkg/logger"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 	"github.com/hashicorp/go-hclog"
 	"math/big"
+	"regexp"
 )
 
 const lengthLink = 10
@@ -28,6 +29,10 @@ func NewService(data Repository) *Service {
 }
 
 func (s *Service) CreateShortLink(ctx context.Context, fullLink string) (string, error) {
+	re := regexp.MustCompile(".+\\.+")
+	if !re.MatchString(fullLink) {
+		return "", errors.ErrInvalidArgument
+	}
 	shortLink := s.MakeShortLink(fullLink)
 	err := s.data.CreateShortLink(ctx, fullLink, shortLink)
 	if err != nil {
@@ -48,11 +53,13 @@ func (s *Service) MakeShortLink(fullLink string) string {
 		shortLink[i] = alphabet[bigInt%62]
 		bigInt /= 62
 	}
-	fmt.Println("sucesfully made short link ", string(shortLink))
 	return string(shortLink)
 }
 
 func (s *Service) GetFullLink(ctx context.Context, shortLink string) (string, error) {
+	if len(shortLink) != 10 {
+		return "", errors.ErrInvalidArgument
+	}
 	fullLink, err := s.data.GetFullLink(ctx, shortLink)
 	if err != nil {
 		return "", err

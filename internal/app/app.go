@@ -18,6 +18,8 @@ import (
 	"os"
 )
 
+//go:generate mockgen -source=app.go -destination=../internal/service/mocks/mock.go
+
 type Repository interface {
 	GetFullLink(ctx context.Context, shortUrl string) (string, error)
 	CreateShortLink(ctx context.Context, fullLink, shortLink string) error
