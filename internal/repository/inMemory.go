@@ -11,14 +11,14 @@ import (
 type MemoryRepository struct {
 	log  hclog.Logger
 	base map[string]string
-	mu   *sync.Mutex
+	mu   sync.Mutex
 }
 
 func NewMemoryRepository() *MemoryRepository {
 	return &MemoryRepository{
 		log:  logger.GetLogger(),
 		base: make(map[string]string),
-		mu:   &sync.Mutex{},
+		mu:   sync.Mutex{},
 	}
 }
 
